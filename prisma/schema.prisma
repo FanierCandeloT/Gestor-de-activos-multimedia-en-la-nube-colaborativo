@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Archivo {
+  id          String      @id @default(cuid())
+  titulo      String
+  url         String
+  publicId    String      @unique
+  tipoArchivo TipoArchivo
+  mime        String
+  tamanoBytes Int
+  fechaSubida DateTime    @default(now())
+  subidoPor   String
+
+  @@index([fechaSubida(sort: Desc)])
+  @@index([tipoArchivo])
+}
+
+enum TipoArchivo {
+  IMAGEN
+  VIDEO
+  PDF
+}
