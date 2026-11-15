@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import type { Archivo } from "@/lib/tipos";
 import { ETIQUETA_TIPO, formatearFecha, formatearPeso } from "@/lib/formato";
 
@@ -38,7 +41,16 @@ function VistaPrevia({ archivo }: { archivo: Archivo }) {
     );
 }
 
-export default function TarjetaArchivo({ archivo }: { archivo: Archivo }) {
+type Props = {
+    archivo: Archivo;
+    // Si no se pasa onEliminar, la tarjeta no muestra el botón de borrar.
+    onEliminar?: (id: string) => void;
+    eliminando?: boolean;
+};
+
+export default function TarjetaArchivo({ archivo, onEliminar, eliminando = false }: Props) {
+    const [confirmando, setConfirmando] = useState(false);
+
     return (
         <article className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
             <div className="aspect-video w-full overflow-hidden bg-zinc-100 dark:bg-zinc-800">
@@ -57,6 +69,45 @@ export default function TarjetaArchivo({ archivo }: { archivo: Archivo }) {
                     <span>{formatearFecha(archivo.fechaSubida)}</span>
                 </div>
                 <p className="text-sm text-zinc-500">Por {archivo.subidoPor}</p>
+
+                {onEliminar && (
+                    <div className="pt-2">
+                        {eliminando ? (
+                            <p className="text-sm text-zinc-500" aria-live="polite">
+                                Eliminando...
+                            </p>
+                        ) : confirmando ? (
+                            <div className="flex flex-wrap items-center gap-2 text-sm">
+                                <span>¿Eliminar este archivo?</span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setConfirmando(false);
+                                        onEliminar(archivo.id);
+                                    }}
+                                    className="rounded bg-red-600 px-3 py-1 text-white hover:bg-red-700"
+                                >
+                                    Sí, eliminar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmando(false)}
+                                    className="rounded border border-zinc-300 px-3 py-1 hover:bg-zinc-100 dark:border-zinc-600 dark:hover:bg-zinc-800"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setConfirmando(true)}
+                                className="text-sm text-red-600 hover:underline"
+                            >
+                                Eliminar
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
         </article>
     );
