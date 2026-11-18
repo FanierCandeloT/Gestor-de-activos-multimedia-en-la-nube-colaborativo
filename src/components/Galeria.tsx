@@ -33,14 +33,6 @@ async function leerError(res: Response, porDefecto: string): Promise<string> {
     return datos?.error ?? porDefecto;
 }
 
-// fetch lanza TypeError cuando no hay red; su mensaje viene en inglés.
-function mensajeDeError(e: unknown): string {
-    if (e instanceof TypeError) {
-        return "No se pudo conectar con el servidor. Revisa tu conexión.";
-    }
-    return e instanceof Error ? e.message : "Error desconocido.";
-}
-
 type Props = {
     // Súbelo (+1) desde fuera para que la galería se vuelva a cargar,
     // por ejemplo después de subir un archivo nuevo.
@@ -93,7 +85,7 @@ export default function Galeria({ refreshKey = 0, apiBase = "/api/archivos" }: P
                         clave,
                         items: [],
                         nextCursor: null,
-                        error: mensajeDeError(e),
+                        error: e instanceof Error ? e.message : "Error desconocido.",
                     });
                 }
             }
@@ -131,7 +123,7 @@ export default function Galeria({ refreshKey = 0, apiBase = "/api/archivos" }: P
                     : prev,
             );
         } catch (e) {
-            setErrorAccion(mensajeDeError(e));
+            setErrorAccion(e instanceof Error ? e.message : "Error desconocido.");
         } finally {
             setCargandoMas(false);
         }
@@ -158,7 +150,7 @@ export default function Galeria({ refreshKey = 0, apiBase = "/api/archivos" }: P
                 return { ...prev, items, nextCursor };
             });
         } catch (e) {
-            setErrorAccion(mensajeDeError(e));
+            setErrorAccion(e instanceof Error ? e.message : "Error desconocido.");
         } finally {
             setBorrandoId(null);
         }
