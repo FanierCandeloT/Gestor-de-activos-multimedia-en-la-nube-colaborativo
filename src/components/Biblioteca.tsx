@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Galeria from "./Galeria";
+import SubidaArchivo from "./SubidaArchivo";
 
 type Props = {
     // Por defecto usa la API real; /prueba usa una simulada.
@@ -16,9 +17,9 @@ export default function Biblioteca({ apiBase }: Props) {
 
     return (
         <div>
-            {/* Cuando exista el componente de subida (Tarea A), se coloca aquí:
-                <SubidaArchivo onSubido={refrescar} />
-                Debe llamar a onSubido() cuando el POST responda 201. */}
+            {/* Tarea A: formulario de subida. Más adelante recibirá onSubido={refrescar}
+                para que la galería se recargue cuando el POST responda 201. */}
+            <SubidaArchivo />
 
             <div className="mb-4 flex justify-end">
                 <button
