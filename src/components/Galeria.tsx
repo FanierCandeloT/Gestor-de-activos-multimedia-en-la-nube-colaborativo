@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import type { Archivo, RespuestaListado, TipoArchivo } from "@/lib/tipos";
 import TarjetaArchivo from "./TarjetaArchivo";
 
+const API = "/api/archivos";
+
 type FiltroTipo = TipoArchivo | "TODOS";
 
 const FILTROS: { valor: FiltroTipo; etiqueta: string }[] = [
@@ -45,11 +47,9 @@ type Props = {
     // Súbelo (+1) desde fuera para que la galería se vuelva a cargar,
     // por ejemplo después de subir un archivo nuevo.
     refreshKey?: number;
-    // Ruta base de la API (por defecto la real; /prueba usa una simulada).
-    apiBase?: string;
 };
 
-export default function Galeria({ refreshKey = 0, apiBase = "/api/archivos" }: Props) {
+export default function Galeria({ refreshKey = 0 }: Props) {
     const [tipo, setTipo] = useState<FiltroTipo>("TODOS");
     const [texto, setTexto] = useState(""); // lo que escribe el usuario
     const [q, setQ] = useState(""); // texto ya estabilizado (debounce)
@@ -74,7 +74,7 @@ export default function Galeria({ refreshKey = 0, apiBase = "/api/archivos" }: P
 
         async function cargar() {
             try {
-                const res = await fetch(`${apiBase}?${construirParams(tipo, q)}`);
+                const res = await fetch(`${API}?${construirParams(tipo, q)}`);
                 if (!res.ok) {
                     throw new Error(await leerError(res, "No se pudo cargar la galería."));
                 }
@@ -103,7 +103,7 @@ export default function Galeria({ refreshKey = 0, apiBase = "/api/archivos" }: P
         return () => {
             cancelado = true;
         };
-    }, [tipo, q, clave, apiBase]);
+    }, [tipo, q, clave]);
 
     // Siguiente página: se añade al final de la lista actual.
     async function cargarMas() {
@@ -115,7 +115,7 @@ export default function Galeria({ refreshKey = 0, apiBase = "/api/archivos" }: P
         try {
             const params = construirParams(tipo, q);
             params.set("cursor", resultado.nextCursor);
-            const res = await fetch(`${apiBase}?${params}`);
+            const res = await fetch(`${API}?${params}`);
             if (!res.ok) {
                 throw new Error(await leerError(res, "No se pudieron cargar más archivos."));
             }
@@ -142,7 +142,7 @@ export default function Galeria({ refreshKey = 0, apiBase = "/api/archivos" }: P
         setBorrandoId(id);
         setErrorAccion(null);
         try {
-            const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, {
+            const res = await fetch(`${API}/${encodeURIComponent(id)}`, {
                 method: "DELETE",
             });
             // 404 = ya no existe: también se quita de la lista.
