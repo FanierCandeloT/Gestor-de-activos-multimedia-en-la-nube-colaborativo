@@ -17,9 +17,10 @@ export default function Biblioteca({ apiBase }: Props) {
 
     return (
         <div>
-            {/* Tarea A: formulario de subida. Más adelante recibirá onSubido={refrescar}
-                para que la galería se recargue cuando el POST responda 201. */}
-            <SubidaArchivo />
+            {/* Tarea A: formulario de subida. Al responder 201 llama a refrescar() y la
+                galería se recarga sola. No se muestra en /prueba (apiBase definido): esa
+                galería usa datos simulados y no vería lo que se sube a la nube real. */}
+            {!apiBase && <SubidaArchivo onSubido={refrescar} />}
 
             <div className="mb-4 flex justify-end">
                 <button

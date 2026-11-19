@@ -57,9 +57,63 @@ function VistaPreviaLocal({ archivo, url }: { archivo: File; url: string }) {
     );
 }
 
-// Formulario de subida (Tarea A, Rol 4).
-// Paso 4: vista previa del archivo elegido. Todavía no sube nada.
-export default function SubidaArchivo() {
+const ENDPOINT = "/api/archivos";
+
+type Respuesta = { status: number; cuerpo: unknown };
+
+// Envía el FormData con XMLHttpRequest en vez de fetch, porque fetch no informa
+// del progreso de subida y XMLHttpRequest sí (xhr.upload.onprogress).
+function subirConProgreso(datos: FormData, alProgresar: (porcentaje: number) => void): Promise<Respuesta> {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", ENDPOINT);
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) alProgresar(Math.round((e.loaded / e.total) * 100));
+        };
+
+        // onload se dispara con cualquier respuesta del servidor, también 4xx y 5xx.
+        xhr.onload = () => {
+            let cuerpo: unknown = null;
+            try {
+                cuerpo = JSON.parse(xhr.responseText);
+            } catch {
+                // Respuesta que no es JSON: se trata como error genérico más abajo.
+            }
+            resolve({ status: xhr.status, cuerpo });
+        };
+
+        // onerror solo ocurre si no hubo respuesta (sin red, servidor apagado...).
+        xhr.onerror = () => reject(new Error("No se pudo conectar con el servidor. Revisa tu conexión."));
+
+        xhr.send(datos);
+    });
+}
+
+// Saca el mensaje { error } que devuelve la API, o uno genérico según el código.
+function mensajeDeError({ status, cuerpo }: Respuesta): string {
+    if (cuerpo && typeof cuerpo === "object" && "error" in cuerpo && typeof cuerpo.error === "string") {
+        return cuerpo.error;
+    }
+    return `No se pudo subir el archivo (error ${status}).`;
+}
+
+type Estado =
+    | { tipo: "inactivo" }
+    | { tipo: "subiendo"; progreso: number }
+    | { tipo: "exito"; mensaje: string }
+    | { tipo: "error"; mensaje: string };
+
+type Props = {
+    // Se llama cuando el servidor confirma la subida (201), para que la galería se recargue.
+    onSubido?: () => void;
+};
+
+// Formulario de subida (Tarea A, Rol 4): selección o arrastrar y soltar, validación previa,
+// vista previa y envío a POST /api/archivos con barra de progreso y mensajes de éxito o error.
+export default function SubidaArchivo({ onSubido }: Props) {
+    const [estado, setEstado] = useState<Estado>({ tipo: "inactivo" });
+    const subiendo = estado.tipo === "subiendo";
     const [subidoPor, setSubidoPor] = useState(""); // obligatorio en la API (máx. 60)
     const [nombreTocado, setNombreTocado] = useState(false); // muestra el error solo tras salir del campo
     const [titulo, setTitulo] = useState(""); // opcional (máx. 120)
@@ -98,6 +152,8 @@ export default function SubidaArchivo() {
     // Punto común para el selector y para arrastrar y soltar.
     function elegirArchivo(f: File | undefined) {
         if (!f) return;
+        // Al elegir otro archivo se oculta el mensaje de la subida anterior.
+        setEstado({ tipo: "inactivo" });
         const error = validarArchivo(f);
         if (error) {
             // Un archivo inválido no se guarda: se muestra el motivo.
@@ -136,16 +192,49 @@ export default function SubidaArchivo() {
         // Sin preventDefault el navegador abriría el archivo en la pestaña.
         e.preventDefault();
         setArrastrando(false);
+        if (subiendo) return; // no cambiar el archivo a mitad de una subida
         // Solo se sube un archivo a la vez: si sueltan varios, se toma el primero.
         elegirArchivo(e.dataTransfer.files[0]);
     }
 
-    function enviar(e: SubmitEvent<HTMLFormElement>) {
+    async function enviar(e: SubmitEvent<HTMLFormElement>) {
         // Evita que el navegador recargue la página al enviar el formulario.
         e.preventDefault();
         setNombreTocado(true);
-        if (!listo) return;
-        // Paso 5: aquí se enviará el FormData a POST /api/archivos.
+        if (!listo || subiendo) return;
+
+        // Mismos nombres de campo que espera POST /api/archivos.
+        const datos = new FormData();
+        datos.append("archivo", archivo);
+        datos.append("subidoPor", subidoPor.trim());
+        datos.append("titulo", titulo.trim());
+
+        setEstado({ tipo: "subiendo", progreso: 0 });
+        try {
+            const respuesta = await subirConProgreso(datos, (progreso) =>
+                setEstado({ tipo: "subiendo", progreso }),
+            );
+
+            if (respuesta.status !== 201) {
+                setEstado({ tipo: "error", mensaje: mensajeDeError(respuesta) });
+                return;
+            }
+
+            const registro = respuesta.cuerpo as { titulo?: string } | null;
+            setEstado({
+                tipo: "exito",
+                mensaje: `"${registro?.titulo ?? archivo.name}" se subió correctamente.`,
+            });
+            // Se limpia el formulario para la siguiente subida; el nombre se conserva.
+            setTitulo("");
+            quitarArchivo();
+            onSubido?.(); // la galería vuelve a pedir GET /api/archivos
+        } catch (error) {
+            setEstado({
+                tipo: "error",
+                mensaje: error instanceof Error ? error.message : "Error desconocido.",
+            });
+        }
     }
 
     return (
@@ -158,15 +247,18 @@ export default function SubidaArchivo() {
                     onDragOver={alArrastrarEncima}
                     onDragLeave={alSalir}
                     onDrop={alSoltar}
-                    className={`flex min-h-32 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed p-6 text-center text-sm transition-colors focus-within:ring-2 focus-within:ring-blue-500 ${
-                        arrastrando
-                            ? "border-blue-600 bg-blue-50 dark:bg-blue-950"
-                            : "border-zinc-300 hover:bg-zinc-50 dark:border-zinc-600 dark:hover:bg-zinc-900"
+                    className={`flex min-h-32 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed p-6 text-center text-sm transition-colors focus-within:ring-2 focus-within:ring-blue-500 ${
+                        subiendo
+                            ? "cursor-not-allowed border-zinc-300 opacity-50 dark:border-zinc-600"
+                            : arrastrando
+                              ? "cursor-pointer border-blue-600 bg-blue-50 dark:bg-blue-950"
+                              : "cursor-pointer border-zinc-300 hover:bg-zinc-50 dark:border-zinc-600 dark:hover:bg-zinc-900"
                     }`}
                 >
                     <input
                         ref={inputRef}
                         type="file"
+                        disabled={subiendo}
                         accept={ACEPTADOS}
                         onChange={(e) => elegirArchivo(e.target.files?.[0])}
                         className="sr-only"
@@ -191,14 +283,17 @@ export default function SubidaArchivo() {
                             </div>
                         )}
                         <div className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                            <span className="min-w-0 truncate" title={archivo.name}>
+                            {/* wrap-anywhere parte nombres largos sin espacios; con truncate
+                                (una sola línea) el móvil ensanchaba la página. */}
+                            <span className="min-w-0 wrap-anywhere" title={archivo.name}>
                                 {archivo.name}{" "}
                                 <span className="text-zinc-500">({formatearPeso(archivo.size)})</span>
                             </span>
                             <button
                                 type="button"
                                 onClick={quitarArchivo}
-                                className="shrink-0 rounded px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                                disabled={subiendo}
+                                className="shrink-0 rounded px-2 py-1 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950"
                             >
                                 Quitar
                             </button>
@@ -216,6 +311,7 @@ export default function SubidaArchivo() {
                             value={subidoPor}
                             onChange={(e) => setSubidoPor(e.target.value)}
                             onBlur={() => setNombreTocado(true)}
+                            disabled={subiendo}
                             maxLength={60}
                             aria-required="true"
                             aria-invalid={nombreTocado && !nombreValido}
@@ -238,6 +334,7 @@ export default function SubidaArchivo() {
                             type="text"
                             value={titulo}
                             onChange={(e) => setTitulo(e.target.value)}
+                            disabled={subiendo}
                             maxLength={120}
                             placeholder="Si lo dejas vacío se usa el nombre del archivo"
                             className="rounded border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-600"
@@ -245,13 +342,55 @@ export default function SubidaArchivo() {
                     </label>
                 </div>
 
-                {/* Se activa solo con archivo válido y nombre. El envío real llega en el paso 5. */}
+                {/* Barra de progreso: llega a 100 % cuando el navegador terminó de enviar;
+                    luego el servidor aún sube a la nube y guarda en la BD. */}
+                {estado.tipo === "subiendo" && (
+                    <div className="flex flex-col gap-1 text-sm" aria-live="polite">
+                        <div className="flex justify-between">
+                            <span>{estado.progreso < 100 ? "Subiendo..." : "Guardando en la nube..."}</span>
+                            <span>{estado.progreso} %</span>
+                        </div>
+                        <div
+                            role="progressbar"
+                            aria-label="Progreso de la subida"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={estado.progreso}
+                            className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700"
+                        >
+                            <div
+                                className={`h-full bg-blue-600 transition-[width] ${estado.progreso === 100 ? "animate-pulse" : ""}`}
+                                style={{ width: `${estado.progreso}%` }}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {estado.tipo === "exito" && (
+                    <p role="status" className="rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+                        {estado.mensaje}
+                    </p>
+                )}
+
+                {estado.tipo === "error" && (
+                    <p role="alert" className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+                        {estado.mensaje}
+                    </p>
+                )}
+
+                {/* Se activa solo con archivo válido y nombre, y no mientras se sube. */}
                 <button
                     type="submit"
-                    disabled={!listo}
-                    className="self-start rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!listo || subiendo}
+                    className="inline-flex items-center gap-2 self-start rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                    Subir
+                    {subiendo && (
+                        <span
+                            aria-hidden="true"
+                            className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
+                        />
+                    )}
+                    {subiendo ? "Subiendo..." : "Subir"}
                 </button>
             </form>
         </section>
